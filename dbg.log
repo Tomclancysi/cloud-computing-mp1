@@ -1,0 +1,96 @@
+131
+
+ [0] APP
+ 2.0.0.0:0 [0] APP
+ 3.0.0.0:0 [0] APP
+ 4.0.0.0:0 [0] APP
+ 5.0.0.0:0 [0] APP
+ 6.0.0.0:0 [0] APP
+ 7.0.0.0:0 [0] APP
+ 8.0.0.0:0 [0] APP
+ 9.0.0.0:0 [0] APP
+ 10.0.0.0:0 [0] APP
+ 4.0.0.0:0 [0] Trying to join...
+ 3.0.0.0:0 [0] Trying to join...
+ 2.0.0.0:0 [0] Trying to join...
+ 1.0.0.0:0 [0] Starting up group...
+ 8.0.0.0:0 [1] Trying to join...
+ 7.0.0.0:0 [1] Trying to join...
+ 6.0.0.0:0 [1] Trying to join...
+ 5.0.0.0:0 [1] Trying to join...
+ 1.0.0.0:0 [1] accepted join req from IP 2.0.0.0, reply it.
+
+ 1.0.0.0:0 [1] accepted join req from IP 3.0.0.0, reply it.
+
+ 1.0.0.0:0 [1] accepted join req from IP 4.0.0.0, reply it.
+
+ 10.0.0.0:0 [2] Trying to join...
+ 9.0.0.0:0 [2] Trying to join...
+ 4.0.0.0:0 [2] MemberList 2.0.0.0, reply it.
+ 4.0.0.0:0 [2] MemberList 3.0.0.0, reply it.
+ 4.0.0.0:0 [2] MemberList 4.0.0.0, reply it.
+ 4.0.0.0:0 [2] MemberList 1.0.0.0, reply it.
+ 3.0.0.0:0 [2] MemberList 2.0.0.0, reply it.
+ 3.0.0.0:0 [2] MemberList 3.0.0.0, reply it.
+ 3.0.0.0:0 [2] MemberList 1.0.0.0, reply it.
+ 2.0.0.0:0 [2] MemberList 2.0.0.0, reply it.
+ 2.0.0.0:0 [2] MemberList 1.0.0.0, reply it.
+ 1.0.0.0:0 [2] accepted join req from IP 5.0.0.0, reply it.
+
+ 1.0.0.0:0 [2] accepted join req from IP 6.0.0.0, reply it.
+
+ 1.0.0.0:0 [2] accepted join req from IP 7.0.0.0, reply it.
+
+ 1.0.0.0:0 [2] accepted join req from IP 8.0.0.0, reply it.
+
+ 8.0.0.0:0 [3] MemberList 2.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 3.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 4.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 5.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 6.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 7.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 8.0.0.0, reply it.
+ 8.0.0.0:0 [3] MemberList 1.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 2.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 3.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 4.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 5.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 6.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 7.0.0.0, reply it.
+ 7.0.0.0:0 [3] MemberList 1.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 2.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 3.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 4.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 5.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 6.0.0.0, reply it.
+ 6.0.0.0:0 [3] MemberList 1.0.0.0, reply it.
+ 5.0.0.0:0 [3] MemberList 2.0.0.0, reply it.
+ 5.0.0.0:0 [3] MemberList 3.0.0.0, reply it.
+ 5.0.0.0:0 [3] MemberList 4.0.0.0, reply it.
+ 5.0.0.0:0 [3] MemberList 5.0.0.0, reply it.
+ 5.0.0.0:0 [3] MemberList 1.0.0.0, reply it.
+ 1.0.0.0:0 [3] accepted join req from IP 9.0.0.0, reply it.
+
+ 1.0.0.0:0 [3] accepted join req from IP 10.0.0.0, reply it.
+
+ 10.0.0.0:0 [4] MemberList 2.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 3.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 4.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 5.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 6.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 7.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 8.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 9.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 10.0.0.0, reply it.
+ 10.0.0.0:0 [4] MemberList 1.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 2.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 3.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 4.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 5.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 6.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 7.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 8.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 9.0.0.0, reply it.
+ 9.0.0.0:0 [4] MemberList 1.0.0.0, reply it.
+ 8.0.0.0:0 [100] Node failed at time=100
+ 1.0.0.0:0 [500] @@time=500
