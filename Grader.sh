@@ -32,9 +32,9 @@ if [ $verbose -eq 0 ]; then
 	make > /dev/null
 	./Application testcases/singlefailure.conf > /dev/null
 else
-	make clean
-	make
-	./Application testcases/singlefailure.conf
+	make clean > /dev/null
+	make  > /dev/null
+	./Application testcases/singlefailure.conf > /dev/null
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then
@@ -81,9 +81,9 @@ if [ $verbose -eq 0 ]; then
 	make > /dev/null
 	./Application testcases/multifailure.conf > /dev/null
 else
-	make clean
-	make
-	./Application testcases/multifailure.conf
+	make clean > /dev/null
+	make > /dev/null
+	./Application testcases/multifailure.conf > /dev/null
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then
@@ -144,9 +144,9 @@ if [ $verbose -eq 0 ]; then
 	make > /dev/null
 	./Application testcases/msgdropsinglefailure.conf > /dev/null
 else
-	make clean
-	make
-	./Application testcases/msgdropsinglefailure.conf
+	make clean > /dev/null
+	make > /dev/null
+	./Application testcases/msgdropsinglefailure.conf > /dev/null
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then

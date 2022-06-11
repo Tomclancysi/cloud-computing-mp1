@@ -102,7 +102,7 @@ int Application::run()
 		// Fail some nodes
 		fail();
 	}
-
+	printf("ended!!!!!!!!!!");
 	// Clean up
 	en->ENcleanup();
 

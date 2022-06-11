@@ -111,6 +111,9 @@ int MP1Node::initThisNode(Address *joinaddr) {
 	memberNode->heartbeat = 0;
 	memberNode->pingCounter = TFAIL;
 	memberNode->timeOutCounter = -1;
+    waitingPingList = (notFullFilledPing*)malloc(sizeof(notFullFilledPing)*MAXQUEUELEN);
+    waitingCount = 0;
+    // this->pingPromise = new std::unordered_map<long, long>();
     initMemberListTable(memberNode);
 
     return 0;
@@ -133,6 +136,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
         log->LOG(&memberNode->addr, "Starting up group...");
 #endif
         memberNode->inGroup = true;
+        log->logNodeAdd(&this->memberNode->addr, &this->memberNode->addr);
     }
     else {
         size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
@@ -167,6 +171,8 @@ int MP1Node::finishUpThisNode(){
    /*
     * Your code goes here
     */
+//    free(waitingPingList);
+    printf("final wating list length %d\n", waitingCount);
 }
 
 /**
@@ -310,26 +316,46 @@ void MP1Node::encountJoinRep(MessageBody body){
     auto address = this->getJoinAddress();
     this->memberNode->memberList.emplace_back(*(int*)address.addr, *((short*)address.addr + 2), 0l, 0l);
     this->memberNode->inGroup = true;
-    for(auto m : this->memberNode->memberList){
-         char* ip = (char*)(&(m.id));
-         printf("MemberList has %d.%d.%d.%d, add it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
+    for(auto m : this->memberNode->memberList){// initalize the member list , log all member
+         Address memberAddress = buildAddress(m.getid(), m.getport());
+         log->logNodeAdd(&this->memberNode->addr, &memberAddress);
     }
-
+    
+#ifdef DEBUGLOG
     char *buf = (char*)malloc(1024);
     for(auto m : this->memberNode->memberList){
         char* ip = (char*)(&(m.id));
         sprintf(buf, "MemberList %d.%d.%d.%d, reply it.", *ip, *(ip+1), *(ip+2), *(ip+3));
-#ifdef DEBUGLOG
         log->LOG(&memberNode->addr, buf);
-#endif
     }
     free(buf);
+#endif
 }
 
 void MP1Node::encountPing(MessageBody body){
     // return ACK
     char* ip = (char*)(&(body.host));
-    printf("Ping from %d.%d.%d.%d, send ack to it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
+    MessageHdr header;
+    header.msgType = MsgTypes::ACK;
+    int myHost = *(int*)(this->memberNode->addr.addr);
+    short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+    Address distination = buildAddress(body.host, body.port);
+    string msg = buildMessageBody(header, myHost, myPort, body.discriptionID);
+    emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
+    // printf("Ping from %d.%d.%d.%d, send ack to it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
+}
+
+void MP1Node::encountAck(MessageBody body){
+    char* ip = (char*)(&(body.host));
+    long ID = body.discriptionID;
+    size_t idx = 0;
+    while (idx < waitingCount && waitingPingList[idx].discriptionID != ID) ++idx;
+    if (idx == waitingCount)return; // already late
+    // remove the record
+    while(idx + 1 < waitingCount){
+        waitingPingList[idx] = waitingPingList[idx+1];
+    }
+    waitingCount--;
 }
 
 /**
@@ -345,7 +371,6 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
     // printf("accept message, type=%d\n", type);
     data += sizeof(MessageHdr);
     MessageBody body = parseMessageBody(type, data);
-    
     switch (type)
     {
     case MsgTypes::JOINREP: // yeah!成功加入组，看看组里还有谁？
@@ -380,10 +405,35 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
  * 				Propagate your membership list
  */
 void MP1Node::nodeLoopOps() {
-
+    // return;
 	/*
 	 * Your code goes here
 	 */
+    auto curTime = this->par->globaltime;
+    // cheak and remove the expired ping
+    size_t j = 0;
+    for(size_t i = 0; i < waitingCount; ++i){
+        if (curTime - waitingPingList[i].timestamp >= TREMOVE){
+            // remove, spread remove msg?
+            auto &memList = this->memberNode->memberList;
+            auto iter = find_if(memList.begin(), memList.end(), [&](const MemberListEntry ent){
+                return ent.id == waitingPingList[i].host && ent.port == waitingPingList[i].port;
+            });
+            if (iter != memList.end())
+                memList.erase(iter);
+            
+            Address dist = buildAddress(waitingPingList[i].host, waitingPingList[i].port);
+            log->logNodeRemove(&this->memberNode->addr, &dist);
+        }
+        else if(curTime - waitingPingList[i].timestamp >= TFAIL){
+            // fail and spread
+
+            waitingPingList[j++] = waitingPingList[i];
+        }
+        else
+            waitingPingList[j++] = waitingPingList[i];
+    }
+    waitingCount = j;
     // SWIM style
     // Ping another Member at a random choice
     auto& memList = this->memberNode->memberList;
@@ -416,11 +466,18 @@ void MP1Node::nodeLoopOps() {
         */
         MessageHdr header;
         header.msgType = MsgTypes::PING;
-        auto curTime = this->par->globaltime;
         
         long discriptionID = (myHost * 1234567l) ^ (myPort * 4567890) ^ curTime; // ip host + time 的随机数
         string msg = buildMessageBody(header, myHost, myPort, discriptionID);
         emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
+        // record current ping result
+
+        waitingPingList[waitingCount].discriptionID = discriptionID;
+        waitingPingList[waitingCount].timestamp = curTime;
+        waitingPingList[waitingCount].host = distHost;
+        waitingPingList[waitingCount].port = distPort;
+        waitingCount++;
+        
     }
 
 

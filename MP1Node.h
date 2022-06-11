@@ -22,7 +22,7 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-
+#define MAXQUEUELEN 1000
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
@@ -60,7 +60,12 @@ struct MessageBody{
 	vector<MemberListEntry> memberList;
 };
 
-
+struct notFullFilledPing{
+	long discriptionID;
+	long timestamp;
+	int host;
+	short port;
+};
 /**
  * CLASS NAME: MP1Node
  *
@@ -74,7 +79,9 @@ private:
 	Member *memberNode;
 	char NULLADDR[6];
 	size_t curPingMemIndex;
-	// std::unordered_map<long, long> pingPromise;
+	notFullFilledPing* waitingPingList;
+	size_t waitingCount;
+	// std::unordered_map<long, long> *pingPromise;
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {
@@ -98,6 +105,7 @@ public:
 	void encountJoinReq(MessageBody);
 	void encountJoinRep(MessageBody);
 	void encountPing(MessageBody);
+	void encountAck(MessageBody);
 	virtual ~MP1Node();
 };
 
