@@ -245,12 +245,38 @@ MessageBody MP1Node::parseMessageBody(MsgTypes type, char *body){
         msg.port = *(short*)body;
         body += sizeof(short);
         msg.discriptionID = *(long*)body;
+        body += sizeof(long);
+        if(type == MsgTypes::PINGREQ){
+            msg.reqHost = *(int*)body;
+            body += sizeof(int);
+            msg.reqPort = *(short*)body;
+            body += sizeof(short);
+        }
+        msg.piggyBack = parsePiggyBackMsg(body);
+        if(msg.piggyBack.size()){
+            // printf("piggy back info %d, %d\n", msg.piggyBack[0].first, msg.piggyBack[0].second);
+            // add the piggy back info to self memberlist
+            int myHost = *(int*)(this->memberNode->addr.addr);
+            short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+            auto &memList = this->memberNode->memberList;
+            for(auto mem : msg.piggyBack){
+                if(myHost == mem.first && myPort == mem.second)
+                    continue;
+                if(std::find_if(memList.begin(), memList.end(), [&](const MemberListEntry& ent){
+                    return ent.id == mem.first && ent.port == mem.second;
+                }) == memList.end()){
+                    memList.emplace_back(mem.first, mem.second);
+                    Address dist = buildAddress(mem.first, mem.second);
+                    log->logNodeAdd(&this->memberNode->addr, &dist);
+                }
+            }
+        }
         break;
     }
     return msg;
 }
 
-string buildMessageBody(MessageHdr header, int host, short port, long discriptionID){
+string MP1Node::buildMessageBody(MessageHdr header, int host, short port, long discriptionID){
     // char *msg = (char*)malloc(sizeof(MessageHdr) + sizeof(int) + sizeof(short) + sizeof(long));
     size_t dataLength = sizeof(MessageHdr) + sizeof(int) + sizeof(short) + sizeof(long);
     string ret(dataLength, '0');
@@ -262,10 +288,11 @@ string buildMessageBody(MessageHdr header, int host, short port, long discriptio
     *((short*)msg) = port;
     msg += sizeof(short);
     *((long*)msg) = discriptionID;
+    ret += buildPiggyBackMsg();
     return ret;
 }
 
-string buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntry>& memList){
+string MP1Node::buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntry>& memList){
     string strMemList = serializeMemberList(memList);
     size_t dataLength = sizeof(MessageHdr) + sizeof(size_t) + strMemList.size();
     string ret(dataLength, '0');
@@ -279,17 +306,95 @@ string buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntr
     return ret;
 }
 
-Address buildAddress(int host, short port){
+string MP1Node::buildMessageBody(MessageHdr header, int fromHost, short fromPort, int reqHost, short reqPort, long discriptionID){
+    size_t dataLength = sizeof(MessageHdr) + 2*sizeof(int) + 2*sizeof(short) + sizeof(long);
+    string ret(dataLength, '0');
+    char *msg = const_cast<char*>(ret.data());
+    *((MessageHdr*)msg) = header;
+    msg += sizeof(MessageHdr);
+    *((int*)msg) = fromHost;
+    msg += sizeof(int);
+    *((short*)msg) = fromPort;
+    msg += sizeof(short);
+    *((long*)msg) = discriptionID;
+    msg += sizeof(long);
+    *((int*)msg) = reqHost;
+    msg += sizeof(int);
+    *((short*)msg) = reqPort;
+    ret += buildPiggyBackMsg();
+    return ret;
+}
+
+string MP1Node::buildPiggyBackMsg(){
+    auto &memList = this->memberNode->memberList;
+    int k = 5;
+    vector<int> choosed;
+    int t = std::min(memList.size(), (size_t)k);
+    for(int i = 0; i < t; ++i)
+        choosed.push_back(i);
+    
+    if(memList.size() > t){
+        for(int i = t; i < memList.size(); ++i){
+            int c = rand() % (1+i);
+            if(c < t){
+                choosed[c] = i;
+            }
+        }    
+    }
+    size_t msgsize = (sizeof(int) + sizeof(short)) * t + sizeof(int);
+    string ret(msgsize, ' ');
+    char *msg = const_cast<char*>(ret.data());
+    *((int*)msg) = t;
+    msg += sizeof(int);
+    for(int c : choosed){
+        *((int*)msg) = memList[c].getid();
+        msg += sizeof(int);
+        *((short*)msg) = memList[c].getport();
+        msg += sizeof(short);
+    }
+    return ret;
+}
+
+vector<pair<int, short>> MP1Node::parsePiggyBackMsg(char* msg){
+    int n = *((int*)msg);
+    msg += sizeof(int);
+    vector<pair<int, short>> ret;
+    int host;
+    short port;
+    for(int i = 0; i < n; i++){
+        host = *((int*)msg); msg += sizeof(int);
+        port = *((short*)msg); msg += sizeof(short);
+        ret.emplace_back(host, port);
+    }
+    return ret;
+}
+
+
+
+Address MP1Node::buildAddress(int host, short port){
     Address dist;
     *((int*)dist.addr) = host;
     *(((short*)dist.addr) + 2) = port;
     return dist;
 }
 
+MemberListEntry* MP1Node::getAMember(){
+    auto &memList = this->memberNode->memberList;
+    if (memList.empty())
+        return nullptr;
+    this->curPingMemIndex = (this->curPingMemIndex + 1) % memList.size();
+    if (this->curPingMemIndex == 0){
+        std::random_device rd;
+        std::mt19937 g(rd());
+        std::shuffle(memList.begin(), memList.end(), g);
+    }
+    return &memList[this->curPingMemIndex];
+}
+
 void MP1Node::encountJoinReq(MessageBody body){
     // this should be the leader.
     auto & memList = this->memberNode->memberList;
-    memList.emplace_back(body.host, body.port, body.heartBeat, body.timeStamp);
+    
     // send join rep, tell it all member in this group
     MessageHdr header;
     header.msgType = MsgTypes::JOINREP;
@@ -298,6 +403,7 @@ void MP1Node::encountJoinReq(MessageBody body){
     string msg = buildMessageBody(header, memList.size(), memList);
     char* ip = (char*)(&body.host);
     printf("accepted join req from IP %d.%d.%d.%d, reply it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
+    memList.emplace_back(body.host, body.port, body.heartBeat, body.timeStamp);
 #ifdef DEBUGLOG
     char buf[1024];
     sprintf(buf, "accepted join req from IP %d.%d.%d.%d, reply it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
@@ -346,16 +452,50 @@ void MP1Node::encountPing(MessageBody body){
 }
 
 void MP1Node::encountAck(MessageBody body){
+    // printf("receive one ack\n");
     char* ip = (char*)(&(body.host));
     long ID = body.discriptionID;
     size_t idx = 0;
     while (idx < waitingCount && waitingPingList[idx].discriptionID != ID) ++idx;
     if (idx == waitingCount)return; // already late
+    if(waitingPingList[idx].type == MsgTypes::PINGREQ){
+        // reply ack to the origin
+        MessageHdr header;
+        header.msgType = MsgTypes::ACK;
+        int myHost = *(int*)(this->memberNode->addr.addr);
+        short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+        Address distination = buildAddress(waitingPingList[idx].host, waitingPingList[idx].port);
+        string msg = buildMessageBody(header, myHost, myPort, waitingPingList[idx].discriptionID);
+        emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
+    }
+    
     // remove the record
     while(idx + 1 < waitingCount){
         waitingPingList[idx] = waitingPingList[idx+1];
+        ++idx;
     }
     waitingCount--;
+}
+
+void MP1Node::encountPingReq(MessageBody body){
+    printf("receive a ping req\n");
+    // this node should record the address and when receive a ack, check if it is needed to reply the ack
+    // CAUTION use same discription id
+    // send a simple ping but record ping req
+    Address distination = buildAddress(body.reqHost, body.reqPort);
+    MessageHdr header;
+    header.msgType = MsgTypes::PING;
+    int myHost = *(int*)(this->memberNode->addr.addr);
+    short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+    string msg = buildMessageBody(header, myHost, myPort, body.discriptionID);
+    emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
+    // record as ping req
+    waitingPingList[waitingCount].discriptionID = body.discriptionID;
+    waitingPingList[waitingCount].timestamp = this->par->globaltime;
+    waitingPingList[waitingCount].host = body.host;
+    waitingPingList[waitingCount].port = body.port;
+    waitingPingList[waitingCount].type = MsgTypes::PINGREQ;
+    waitingCount++;
 }
 
 /**
@@ -384,11 +524,11 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
         break;
     case MsgTypes::PINGREQ:
         // 直接回复ping 相应地址
-        
+        this->encountPingReq(body);
         break;
     case MsgTypes::ACK:
         // 两种情况，如果是PingREQ则转发ack
-
+        this->encountAck(body);
         break;
     case MsgTypes::DUMMYLASTMSGTYPE:
         break;
@@ -410,12 +550,20 @@ void MP1Node::nodeLoopOps() {
 	 * Your code goes here
 	 */
     auto curTime = this->par->globaltime;
+    int myHost = *(int*)(this->memberNode->addr.addr);
+    short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
     // cheak and remove the expired ping
     size_t j = 0;
+    auto &memList = this->memberNode->memberList;
     for(size_t i = 0; i < waitingCount; ++i){
+        // if is indirect ping, we need to do nothing
+        if(waitingPingList[i].type == MsgTypes::PINGREQ){
+            if(curTime - waitingPingList[i].timestamp <= 2)
+                waitingPingList[j++] = waitingPingList[i];
+            continue;
+        }
         if (curTime - waitingPingList[i].timestamp >= TREMOVE){
             // remove, spread remove msg?
-            auto &memList = this->memberNode->memberList;
             auto iter = find_if(memList.begin(), memList.end(), [&](const MemberListEntry ent){
                 return ent.id == waitingPingList[i].host && ent.port == waitingPingList[i].port;
             });
@@ -426,8 +574,28 @@ void MP1Node::nodeLoopOps() {
             log->logNodeRemove(&this->memberNode->addr, &dist);
         }
         else if(curTime - waitingPingList[i].timestamp >= TFAIL){
-            // fail and spread
-
+            // fail and spread 
+            
+            waitingPingList[j++] = waitingPingList[i];
+        }
+        else if(curTime - waitingPingList[i].timestamp >= 2){
+            // send indirect ping-req
+            int k = std::min((size_t)5, memList.size());
+            while (k--){
+                auto pm = getAMember();
+                // 这一坨shit就是因为api没设计好， 要不然就是一行，但是不想改了 
+                // when sending indirect request, we should use the discription id of the old, so it can be fullfilled in the future.
+                // when one node receive a ping req it need to reply so need to remember the source
+                Address distination;
+                *((int*)distination.addr) = pm->getid();
+                *(((short*)distination.addr) + 2) = pm->getport();
+                MessageHdr header;
+                header.msgType = MsgTypes::PINGREQ;
+                // string msg = buildMessageBody(header, myHost, myPort, waitingPingList[i].discriptionID);
+                string msg = buildMessageBody(header, myHost, myPort, waitingPingList[i].host, waitingPingList[i].port, waitingPingList[i].discriptionID);
+                emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
+                
+            }
             waitingPingList[j++] = waitingPingList[i];
         }
         else
@@ -436,18 +604,19 @@ void MP1Node::nodeLoopOps() {
     waitingCount = j;
     // SWIM style
     // Ping another Member at a random choice
-    auto& memList = this->memberNode->memberList;
     if (memList.size() >= 1){
         // ping this member, msg formatter: header,address,
         // dose swim gossip its fully memberlist with others
+        auto p = getAMember();
+        if(p == nullptr)
+            return;
+        
+        int distHost = p->getid();
+        short distPort = p->getport();
         Address distination;
-        *((int*)distination.addr) = memList[this->curPingMemIndex].getid();
-        *(((short*)distination.addr) + 2) = memList[this->curPingMemIndex].getport();
-        int distHost = memList[this->curPingMemIndex].getid();
-        short distPort = memList[this->curPingMemIndex].getport();
+        *((int*)distination.addr) = distHost;
+        *(((short*)distination.addr) + 2) = distPort;
 
-        int myHost = *(int*)(this->memberNode->addr.addr);
-        short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
         // this is gossip style, we will update memberlist in else where
         /*
         string strMemList = serializeMemberList(memList);
@@ -467,7 +636,7 @@ void MP1Node::nodeLoopOps() {
         MessageHdr header;
         header.msgType = MsgTypes::PING;
         
-        long discriptionID = (myHost * 1234567l) ^ (myPort * 4567890) ^ curTime; // ip host + time 的随机数
+        long discriptionID = (myHost * 1234567l) ^ (myPort * 4567890) ^ curTime ^ rand(); // ip host + time 的随机数
         string msg = buildMessageBody(header, myHost, myPort, discriptionID);
         emulNet->ENsend(&this->memberNode->addr, &distination, const_cast<char*>(msg.data()), msg.size());
         // record current ping result
@@ -476,6 +645,7 @@ void MP1Node::nodeLoopOps() {
         waitingPingList[waitingCount].timestamp = curTime;
         waitingPingList[waitingCount].host = distHost;
         waitingPingList[waitingCount].port = distPort;
+        waitingPingList[waitingCount].type = MsgTypes::PING;
         waitingCount++;
         
     }

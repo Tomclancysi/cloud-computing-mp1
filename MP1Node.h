@@ -16,12 +16,13 @@
 #include "Queue.h"
 
 #include <unordered_map>
+#include<random>
 
 /**
  * Macros
  */
 #define TREMOVE 20
-#define TFAIL 5
+#define TFAIL 6
 #define MAXQUEUELEN 1000
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
@@ -55,9 +56,12 @@ struct MessageBody{
 	long discriptionID;
 	int host;
 	short port;
+	int reqHost;
+	short reqPort;
 	long heartBeat;
 	long timeStamp;
 	vector<MemberListEntry> memberList;
+	vector<pair<int, short>> piggyBack;
 };
 
 struct notFullFilledPing{
@@ -65,6 +69,7 @@ struct notFullFilledPing{
 	long timestamp;
 	int host;
 	short port;
+	MsgTypes type;
 };
 /**
  * CLASS NAME: MP1Node
@@ -81,6 +86,7 @@ private:
 	size_t curPingMemIndex;
 	notFullFilledPing* waitingPingList;
 	size_t waitingCount;
+
 	// std::unordered_map<long, long> *pingPromise;
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
@@ -106,6 +112,14 @@ public:
 	void encountJoinRep(MessageBody);
 	void encountPing(MessageBody);
 	void encountAck(MessageBody);
+	void encountPingReq(MessageBody);
+	MemberListEntry* getAMember();
+	string buildPiggyBackMsg();
+	vector<pair<int, short>> parsePiggyBackMsg(char*);
+	string buildMessageBody(MessageHdr header, int fromHost, short fromPort, int reqHost, short reqPort, long discriptionID);
+	string buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntry>& memList);
+	string buildMessageBody(MessageHdr header, int host, short port, long discriptionID);
+	Address buildAddress(int host, short port);
 	virtual ~MP1Node();
 };
 
