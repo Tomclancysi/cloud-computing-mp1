@@ -227,14 +227,17 @@ MessageBody MP1Node::parseMessageBody(MsgTypes type, char *body){
         msg.host = *(int*)body;
         body += sizeof(int);
         msg.port = *(short*)body;
-        body += sizeof(short);
-        msg.heartBeat = *(long*)body;
+        body += sizeof(short) + 1;
+        msg.timeStamp = *(long*)body;
         break;
         
         case MsgTypes::JOINREP:
-        n = *(size_t*)body;
-        body += sizeof(size_t);
-        msg.memberList = deserializeMemberList(body, n);
+        msg.piggyBack = parsePiggyBackMsg(body);
+        if(msg.piggyBack.size())
+            this->updateMemberList(msg.piggyBack);
+        // n = *(size_t*)body;
+        // body += sizeof(size_t);
+        // msg.memberList = deserializeMemberList(body, n);
         break;
 
         case MsgTypes::PING:
@@ -254,22 +257,24 @@ MessageBody MP1Node::parseMessageBody(MsgTypes type, char *body){
         }
         msg.piggyBack = parsePiggyBackMsg(body);
         if(msg.piggyBack.size()){
+            this->updateMemberList(msg.piggyBack);
             // printf("piggy back info %d, %d\n", msg.piggyBack[0].first, msg.piggyBack[0].second);
             // add the piggy back info to self memberlist
-            int myHost = *(int*)(this->memberNode->addr.addr);
-            short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
-            auto &memList = this->memberNode->memberList;
-            for(auto mem : msg.piggyBack){
-                if(myHost == mem.first && myPort == mem.second)
-                    continue;
-                if(std::find_if(memList.begin(), memList.end(), [&](const MemberListEntry& ent){
-                    return ent.id == mem.first && ent.port == mem.second;
-                }) == memList.end()){
-                    memList.emplace_back(mem.first, mem.second);
-                    Address dist = buildAddress(mem.first, mem.second);
-                    log->logNodeAdd(&this->memberNode->addr, &dist);
-                }
-            }
+            // this part will be used in multiple region!!
+            // int myHost = *(int*)(this->memberNode->addr.addr);
+            // short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+            // auto &memList = this->memberNode->memberList;
+            // for(auto mem : msg.piggyBack){
+            //     if(myHost == mem.first && myPort == mem.second)
+            //         continue;
+            //     if(std::find_if(memList.begin(), memList.end(), [&](const MemberListEntry& ent){
+            //         return ent.id == mem.first && ent.port == mem.second;
+            //     }) == memList.end()){
+            //         memList.emplace_back(mem.first, mem.second);
+            //         Address dist = buildAddress(mem.first, mem.second);
+            //         log->logNodeAdd(&this->memberNode->addr, &dist);
+            //     }
+            // }
         }
         break;
     }
@@ -293,16 +298,18 @@ string MP1Node::buildMessageBody(MessageHdr header, int host, short port, long d
 }
 
 string MP1Node::buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntry>& memList){
-    string strMemList = serializeMemberList(memList);
-    size_t dataLength = sizeof(MessageHdr) + sizeof(size_t) + strMemList.size();
+    // string strMemList = serializeMemberList(memList);
+    // size_t dataLength = sizeof(MessageHdr) + sizeof(size_t) + strMemList.size();
+    size_t dataLength = sizeof(MessageHdr);
     string ret(dataLength, '0');
     // char *msg = (char*)malloc(sizeof(MessageHdr) + sizeof(size_t) + strMemList.size());
     char *msg = const_cast<char*>(ret.data());
     *((MessageHdr*)msg) = header;
-    msg += sizeof(header);
-    *((size_t*)msg) = n;
-    msg += sizeof(size_t);
-    memcpy(msg, strMemList.data(), strMemList.size());
+    // msg += sizeof(header);
+    // *((size_t*)msg) = n;
+    // msg += sizeof(size_t);
+    // memcpy(msg, strMemList.data(), strMemList.size());
+    ret += buildPiggyBackMsg(10000);
     return ret;
 }
 
@@ -325,9 +332,8 @@ string MP1Node::buildMessageBody(MessageHdr header, int fromHost, short fromPort
     return ret;
 }
 
-string MP1Node::buildPiggyBackMsg(){
+string MP1Node::buildPiggyBackMsg(int k/*=5*/){
     auto &memList = this->memberNode->memberList;
-    int k = 5;
     vector<int> choosed;
     int t = std::min(memList.size(), (size_t)k);
     for(int i = 0; i < t; ++i)
@@ -341,7 +347,8 @@ string MP1Node::buildPiggyBackMsg(){
             }
         }    
     }
-    size_t msgsize = (sizeof(int) + sizeof(short)) * t + sizeof(int);
+    t += 1; // count myself
+    size_t msgsize = (sizeof(int) + sizeof(short) + sizeof(long) + sizeof(long)) * t + sizeof(int);
     string ret(msgsize, ' ');
     char *msg = const_cast<char*>(ret.data());
     *((int*)msg) = t;
@@ -351,20 +358,39 @@ string MP1Node::buildPiggyBackMsg(){
         msg += sizeof(int);
         *((short*)msg) = memList[c].getport();
         msg += sizeof(short);
+        *((long*)msg) = memList[c].gettimestamp();
+        msg += sizeof(long);
+        *((long*)msg) = memList[c].getheartbeat(); // 0 represent dead
+        msg += sizeof(long);
     }
+    int myHost = *(int*)(this->memberNode->addr.addr);
+    short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+    long myTime = this->par->globaltime;
+    long heart = 1l;
+    *((int*)msg) = myHost;
+    msg += sizeof(int);
+    *((short*)msg) = myPort;
+    msg += sizeof(short);
+    *((long*)msg) = myTime;
+    msg += sizeof(long);
+    *((long*)msg) = heart; // 0 represent dead
+    msg += sizeof(long);
     return ret;
 }
 
-vector<pair<int, short>> MP1Node::parsePiggyBackMsg(char* msg){
+vector<memberStatus> MP1Node::parsePiggyBackMsg(char* msg){
     int n = *((int*)msg);
     msg += sizeof(int);
-    vector<pair<int, short>> ret;
+    vector<memberStatus> ret;
     int host;
     short port;
+    long timestamp, heart;
     for(int i = 0; i < n; i++){
         host = *((int*)msg); msg += sizeof(int);
         port = *((short*)msg); msg += sizeof(short);
-        ret.emplace_back(host, port);
+        timestamp = *((long*)msg); msg += sizeof(long);
+        heart = *((long*)msg); msg += sizeof(long);
+        ret.push_back(make_tuple(host, port, timestamp, heart));
     }
     return ret;
 }
@@ -403,7 +429,8 @@ void MP1Node::encountJoinReq(MessageBody body){
     string msg = buildMessageBody(header, memList.size(), memList);
     char* ip = (char*)(&body.host);
     printf("accepted join req from IP %d.%d.%d.%d, reply it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
-    memList.emplace_back(body.host, body.port, body.heartBeat, body.timeStamp);
+    // memList.emplace_back(body.host, body.port, body.heartBeat, body.timeStamp);
+    this->updateMemberList({make_tuple(body.host, body.port, body.timeStamp, 1l)}); // use update to update the memberlist not just add to list!
 #ifdef DEBUGLOG
     char buf[1024];
     sprintf(buf, "accepted join req from IP %d.%d.%d.%d, reply it.\n", *ip, *(ip+1), *(ip+2), *(ip+3));
@@ -418,14 +445,15 @@ void MP1Node::encountJoinRep(MessageBody body){
         // already in group, dumplicate response
         return ;
     }
-    this->memberNode->memberList = body.memberList;
-    auto address = this->getJoinAddress();
-    this->memberNode->memberList.emplace_back(*(int*)address.addr, *((short*)address.addr + 2), 0l, 0l);
+    // this->memberNode->memberList = body.memberList;
+    // auto address = this->getJoinAddress();
+    // this->memberNode->memberList.emplace_back(*(int*)address.addr, *((short*)address.addr + 2), 0l, 0l);
     this->memberNode->inGroup = true;
-    for(auto m : this->memberNode->memberList){// initalize the member list , log all member
-         Address memberAddress = buildAddress(m.getid(), m.getport());
-         log->logNodeAdd(&this->memberNode->addr, &memberAddress);
-    }
+    // this->updateMemberList(body.piggyBack);
+    // for(auto m : this->memberNode->memberList){// initalize the member list , log all member
+    //      Address memberAddress = buildAddress(m.getid(), m.getport());
+    //      log->logNodeAdd(&this->memberNode->addr, &memberAddress);
+    // }
     
 #ifdef DEBUGLOG
     char *buf = (char*)malloc(1024);
@@ -478,7 +506,7 @@ void MP1Node::encountAck(MessageBody body){
 }
 
 void MP1Node::encountPingReq(MessageBody body){
-    printf("receive a ping req\n");
+    // printf("receive a ping req\n");
     // this node should record the address and when receive a ack, check if it is needed to reply the ack
     // CAUTION use same discription id
     // send a simple ping but record ping req
@@ -567,11 +595,15 @@ void MP1Node::nodeLoopOps() {
             auto iter = find_if(memList.begin(), memList.end(), [&](const MemberListEntry ent){
                 return ent.id == waitingPingList[i].host && ent.port == waitingPingList[i].port;
             });
-            if (iter != memList.end())
-                memList.erase(iter);
+            if (iter != memList.end()){
+                if(iter->heartbeat == 1l){
+                    Address dist = buildAddress(waitingPingList[i].host, waitingPingList[i].port);
+                    log->logNodeRemove(&this->memberNode->addr, &dist);
+                }
+                iter->heartbeat = 0l;
+                iter->timestamp = curTime;
+            }
             
-            Address dist = buildAddress(waitingPingList[i].host, waitingPingList[i].port);
-            log->logNodeRemove(&this->memberNode->addr, &dist);
         }
         else if(curTime - waitingPingList[i].timestamp >= TFAIL){
             // fail and spread 
@@ -748,4 +780,46 @@ vector<MemberListEntry> deserializeMemberList(char* p, size_t n){
         p += sizeof(long);
     }
     return memberList;
+}
+
+void MP1Node::updateMemberList(const vector<memberStatus>& status){
+    int myHost = *(int*)(this->memberNode->addr.addr);
+    short myPort = *(((short*)(this->memberNode->addr.addr)) + 2);
+    auto &memList = this->memberNode->memberList;
+    for(auto mem : status){
+        auto a = std::get<0>(mem);
+        auto b = std::get<1>(mem);
+        auto c = std::get<2>(mem);
+        auto d = std::get<3>(mem);
+        if(myHost == a && myPort == b)
+            continue;
+        auto iter = std::find_if(memList.begin(), memList.end(), [&](const MemberListEntry& ent){
+            return ent.id == a && ent.port == b;
+        });
+        Address dist = buildAddress(a, b);
+        if(iter == memList.end()){
+            memList.emplace_back(a, b, 0l, c);
+            if(d == 1l)
+                log->logNodeAdd(&this->memberNode->addr, &dist);
+        }
+        else{
+            // if exist check the time
+            if (iter->timestamp < c){
+                // this message is newer than me
+                iter->timestamp = c;
+                if(d == 1l && iter->heartbeat == 0l){
+                    log->logNodeAdd(&this->memberNode->addr, &dist);
+                }
+                else if(d == 0l && iter->heartbeat == 1l){
+                    log->logNodeRemove(&this->memberNode->addr, &dist);
+                }
+                iter->heartbeat = d;
+            }
+            else if(iter->timestamp == c){
+                if(d == 0l && iter->heartbeat == 1l){
+                    log->logNodeRemove(&this->memberNode->addr, &dist);
+                }
+            }
+        }
+    }
 }

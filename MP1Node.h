@@ -52,6 +52,8 @@ typedef struct MessageHdr {
 	enum MsgTypes msgType;
 }MessageHdr;
 
+using memberStatus = tuple<int, short, long, long>; // timestamp status 0 remove 1 alive 2 fail
+
 struct MessageBody{
 	long discriptionID;
 	int host;
@@ -61,7 +63,7 @@ struct MessageBody{
 	long heartBeat;
 	long timeStamp;
 	vector<MemberListEntry> memberList;
-	vector<pair<int, short>> piggyBack;
+	vector<memberStatus> piggyBack;
 };
 
 struct notFullFilledPing{
@@ -114,11 +116,12 @@ public:
 	void encountAck(MessageBody);
 	void encountPingReq(MessageBody);
 	MemberListEntry* getAMember();
-	string buildPiggyBackMsg();
-	vector<pair<int, short>> parsePiggyBackMsg(char*);
+	string buildPiggyBackMsg(int k=5);
+	vector<memberStatus> parsePiggyBackMsg(char*);
 	string buildMessageBody(MessageHdr header, int fromHost, short fromPort, int reqHost, short reqPort, long discriptionID);
 	string buildMessageBody(MessageHdr header, size_t n, const vector<MemberListEntry>& memList);
 	string buildMessageBody(MessageHdr header, int host, short port, long discriptionID);
+	void updateMemberList(const vector<memberStatus>&);
 	Address buildAddress(int host, short port);
 	virtual ~MP1Node();
 };
