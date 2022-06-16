@@ -256,7 +256,9 @@ MessageBody MP1Node::parseMessageBody(MsgTypes type, char *body){
             body += sizeof(short);
         }
         msg.piggyBack = parsePiggyBackMsg(body);
+        
         if(msg.piggyBack.size()){
+            // log->LOG(&this->memberNode->addr, to_string(msg.host).data());
             this->updateMemberList(msg.piggyBack);
             // printf("piggy back info %d, %d\n", msg.piggyBack[0].first, msg.piggyBack[0].second);
             // add the piggy back info to self memberlist
@@ -408,12 +410,16 @@ MemberListEntry* MP1Node::getAMember(){
     auto &memList = this->memberNode->memberList;
     if (memList.empty())
         return nullptr;
-    this->curPingMemIndex = (this->curPingMemIndex + 1) % memList.size();
-    if (this->curPingMemIndex == 0){
-        std::random_device rd;
-        std::mt19937 g(rd());
-        std::shuffle(memList.begin(), memList.end(), g);
-    }
+    // while(memList[this->curPingMemIndex].heartbeat == 0l)
+    do{
+        this->curPingMemIndex = (this->curPingMemIndex + 1) % memList.size();
+    }while(memList[this->curPingMemIndex].heartbeat == 0l);
+    
+    // if (this->curPingMemIndex == 0){
+    //     std::random_device rd;
+    //     std::mt19937 g(rd());
+    //     std::shuffle(memList.begin(), memList.end(), g);
+    // }
     return &memList[this->curPingMemIndex];
 }
 
@@ -456,13 +462,13 @@ void MP1Node::encountJoinRep(MessageBody body){
     // }
     
 #ifdef DEBUGLOG
-    char *buf = (char*)malloc(1024);
-    for(auto m : this->memberNode->memberList){
-        char* ip = (char*)(&(m.id));
-        sprintf(buf, "MemberList %d.%d.%d.%d, reply it.", *ip, *(ip+1), *(ip+2), *(ip+3));
-        log->LOG(&memberNode->addr, buf);
-    }
-    free(buf);
+    // char *buf = (char*)malloc(1024);
+    // for(auto m : this->memberNode->memberList){
+    //     char* ip = (char*)(&(m.id));
+    //     sprintf(buf, "MemberList %d.%d.%d.%d, reply it.", *ip, *(ip+1), *(ip+2), *(ip+3));
+    //     log->LOG(&memberNode->addr, buf);
+    // }
+    // free(buf);
 #endif
 }
 
@@ -598,6 +604,7 @@ void MP1Node::nodeLoopOps() {
             if (iter != memList.end()){
                 if(iter->heartbeat == 1l){
                     Address dist = buildAddress(waitingPingList[i].host, waitingPingList[i].port);
+                    // log->LOG(&this->memberNode->addr, string("remove for time out").data());
                     log->logNodeRemove(&this->memberNode->addr, &dist);
                 }
                 iter->heartbeat = 0l;
@@ -798,7 +805,7 @@ void MP1Node::updateMemberList(const vector<memberStatus>& status){
         });
         Address dist = buildAddress(a, b);
         if(iter == memList.end()){
-            memList.emplace_back(a, b, 0l, c);
+            memList.emplace_back(a, b, d, c);
             if(d == 1l)
                 log->logNodeAdd(&this->memberNode->addr, &dist);
         }
@@ -811,13 +818,16 @@ void MP1Node::updateMemberList(const vector<memberStatus>& status){
                     log->logNodeAdd(&this->memberNode->addr, &dist);
                 }
                 else if(d == 0l && iter->heartbeat == 1l){
+                    // log->LOG(&this->memberNode->addr, string("remove form new message").data());
                     log->logNodeRemove(&this->memberNode->addr, &dist);
                 }
                 iter->heartbeat = d;
             }
             else if(iter->timestamp == c){
                 if(d == 0l && iter->heartbeat == 1l){
+                    // log->LOG(&this->memberNode->addr, string("remove form equal message").data());
                     log->logNodeRemove(&this->memberNode->addr, &dist);
+                    iter->heartbeat = d;
                 }
             }
         }

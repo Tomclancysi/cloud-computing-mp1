@@ -67,6 +67,7 @@ else
 fi
 failednode=`grep "Node failed at time" dbg.log | sort -u | awk '{print $1}'`
 accuracycount=`grep removed dbg.log | sort -u | grep -v $failednode | wc -l`
+echo "---------------------my accuracy count is $accuracycount ------------------"
 if [ $accuracycount -eq 0 ] && [ $failcount -gt 0 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Accuracy..............10/10"
